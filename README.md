@@ -121,10 +121,12 @@ import { Facebook, SITE_TITLE, X, Instagram, GITHUB_REPO } from '../consts';
     <Icon class="w-6 h-6 stroke-2" name="tabler:brand-github"/>
 </a>
 ```
+
 *Sugerencia:* Agradeceríamos mucho mantener el crédito y enlace a **[Proyectos Axioma](https://github.com/Proyectos-axioma/Axioma-Agora)** dentro del archivo `README.md` de tu repositorio, aunque bajo la licencia MIT es completamente opcional.
 
 **2. Si decides cerrar el código (repositorio privado) y quitar el icono del Footer:**
 Si por motivos comerciales tu repositorio es privado y prefieres remover el icono de GitHub de la barra de redes sociales del pie de página, puedes hacerlo sin problema.
+
 *Sugerencia:* Si lo deseas, puedes reubicar el crédito y enlace al repositorio original (`https://github.com/Proyectos-axioma/Axioma-Agora`) en un lugar discreto del sitio (como un *"Desarrollado con Axioma Ágora"* en el Footer, en *Sobre Nosotros* o en *Términos y Condiciones*). Como indica la licencia MIT, esto no es obligatorio.
 
 ---
