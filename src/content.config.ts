@@ -3,63 +3,101 @@ import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 import { SITE_PROPIETARIO } from './consts';
 
+// Helpers a prueba de fallos cuando Keystatic guarda strings vacíos o null en campos opcionales
+const emptyStringToUndefined = (val: unknown) =>
+	typeof val === 'string' && val.trim() === '' ? undefined : val;
+
+const optionalString = z.preprocess(emptyStringToUndefined, z.string().optional());
+const optionalUrl = z.preprocess(emptyStringToUndefined, z.string().url().optional());
+const optionalDate = z.preprocess(
+	(val) => (val === '' || val === null || val === undefined ? undefined : val),
+	z.coerce.date().optional()
+);
+const cleanStringArray = z
+	.array(z.string())
+	.nullable()
+	.optional()
+	.transform((arr) => (arr ?? []).map((s) => s.trim()).filter(Boolean));
+
 const blog = defineCollection({
 	loader: glob({ base: './src/content/blog', pattern: '**/*.{md,mdx}' }),
 	schema: ({ image }) =>
 		z.object({
-// LO OBLIGATORIO (Lo mínimo para que no explote)
-			title: z.string(),
-			description: z.string(),
-			pubDate: z.coerce.date(),
-// LO OPCIONAL (Aquí existe lo que no ocupamos, pero que debería curbrir casi todas las necesidades)
+// LO OBLIGATORIO (Con respaldo a prueba de errores por si se edita manualmente o queda vacío)
+			title: z.string().trim().min(1, 'El título es obligatorio').catch('Artículo sin título'),
+			description: z.string().trim().min(1, 'La descripción es obligatoria').catch('Sin descripción disponible.'),
+			pubDate: z.preprocess(
+				(val) => (val === '' || val === null || val === undefined ? new Date() : val),
+				z.coerce.date()
+			),
+// LO OPCIONAL (Soporta null, undefined o string vacío desde Keystatic sin romper el build)
 // Fechas y Estado
-			updatedDate: z.coerce.date().optional(),
-			draft: z.boolean().default(false), // Ocultar borradores al público
-			destacado: z.boolean().default(false), // Fijar en portada del blog
+			updatedDate: optionalDate,
+			draft: z.boolean().nullable().optional().transform((val) => val ?? false), // Ocultar borradores al público
+			destacado: z.boolean().nullable().optional().transform((val) => val ?? false), // Fijar en portada del blog
 			tiempoLectura: z.number().nullable().optional(), // Tiempo estimado de lectura (minutos)
 
 // Multimedia
-			heroImage: z.optional(image()), // Imagen ancha de cabecera
-			thumbnail: z.optional(image()), // Imagen cuadrada para la tarjeta (si no hay, usas heroImage)
-			videoUrl: z.string().url().optional(), // Por si quieren clavar un video de YouTube
+			heroImage: z.preprocess(emptyStringToUndefined, image().nullable().optional()).transform((val) => val ?? undefined), // Imagen ancha de cabecera
+			thumbnail: z.preprocess(emptyStringToUndefined, image().nullable().optional()).transform((val) => val ?? undefined), // Imagen cuadrada para la tarjeta (si no hay, usas heroImage)
+			videoUrl: optionalUrl, // Por si quieren clavar un video de YouTube
 
 // Taxonomía (Filtros)
-			categoria: z.string().optional(),
-			categories: z.array(z.string()).optional(),
-			tags: z.array(z.string()).default([]),
+			categoria: optionalString,
+			categories: cleanStringArray,
+			tags: cleanStringArray,
 
 // Autoría (Por si el cliente pone a 3 personas distintas a escribir)
-			author: z.string().default(SITE_PROPIETARIO),
-			authorRole: z.string().optional(),
-			authorImage: z.optional(image()),
+			author: z
+				.string()
+				.nullable()
+				.optional()
+				.transform((val) => (val && val.trim() !== '' ? val.trim() : SITE_PROPIETARIO)),
+			authorRole: optionalString,
+			authorImage: z.preprocess(emptyStringToUndefined, image().nullable().optional()).transform((val) => val ?? undefined),
 
 // SEO
-			seoTitle: z.string().optional(),
-			metaTitle: z.string().max(70).optional(), // Título optimizado solo para Google
-			metaDescription: z.string().max(160).optional(),
-			canonicalURL: z.string().url().optional(), // Para evitar contenido duplicado
+			seoTitle: optionalString,
+			metaTitle: z.preprocess(emptyStringToUndefined, z.string().max(70).optional()), // Título optimizado solo para Google
+			metaDescription: z.preprocess(emptyStringToUndefined, z.string().max(160).optional()),
+			canonicalURL: optionalUrl, // Para evitar contenido duplicado
 
 // Control de Interfaz
-			showToc: z.boolean().default(true), // ¿Mostrar tabla de contenidos?
-			relatedPosts: z.array(z.string()).optional(), // Slugs de otros posts para "Te podría interesar"
+			showToc: z.boolean().nullable().optional().transform((val) => val ?? true), // ¿Mostrar tabla de contenidos?
+			relatedPosts: cleanStringArray, // Slugs de otros posts para "Te podría interesar"
 		}),
 });
+
 // Valores para los productos
 const productos = defineCollection({
 	loader: glob({ base: './src/content/productos', pattern: '**/*.{md,mdx}' }),
 	schema: ({ image }) =>
 		z.object({
-			nombre: z.string(),
-			descripcion: z.string(),
-			precio: z.number(),
-			precioDescuento: z.number().nullable().optional(), // <-- Propiedad opcional (soporta vacío en Keystatic)
-			categorias: z.array(z.string()),
-			subcategorias: z.array(z.string()).optional(),
-			imagenPrincipal: image(),
-// Validamos que sea un arreglo de imágenes con un máximo de 5
-			imagenesSecundarias: z.array(image()).max(5).optional(),
-			disponibilidad: z.boolean().default(true),
-			destacado: z.boolean().default(false),
+			nombre: z.string().trim().min(1, 'El nombre del producto es obligatorio').catch('Producto sin nombre'),
+			descripcion: z.string().trim().min(1, 'La descripción es obligatoria').catch('Sin descripción disponible.'),
+			precio: z.coerce.number().min(0).catch(0),
+			precioDescuento: z.number().min(0).nullable().optional(), // <-- Propiedad opcional (soporta vacío/null en Keystatic)
+			categorias: z
+				.array(z.string())
+				.nullable()
+				.optional()
+				.transform((arr) => {
+					const limpias = (arr ?? []).map((s) => s.trim()).filter(Boolean);
+					return limpias.length > 0 ? limpias : ['General'];
+				}),
+			subcategorias: cleanStringArray,
+			imagenPrincipal: z.preprocess(
+				(val) => (typeof val === 'string' && val.trim() !== '' ? val : '../../assets/Placeholder.svg'),
+				image()
+			),
+// Validamos que sea un arreglo de imágenes con un máximo de 5 (ignorando items vacíos si el usuario olvidó subir foto)
+			imagenesSecundarias: z
+				.preprocess(
+					(val) => (Array.isArray(val) ? val.filter((item) => typeof item === 'string' && item.trim() !== '') : undefined),
+					z.array(image()).max(5).optional()
+				),
+			disponibilidad: z.boolean().nullable().optional().transform((val) => val ?? true),
+			destacado: z.boolean().nullable().optional().transform((val) => val ?? false),
 		}),
 });
 
